@@ -57,7 +57,7 @@ _[未来可以添加游戏的实际截图]_
 
 1. 克隆仓库:
 ```
-git clone https://github.com/YOUR_USERNAME/MineSweeper.git
+git clone https://github.com/edigar007/MineSweeper.git
 ```
 
 2. 使用Android Studio打开项目。
