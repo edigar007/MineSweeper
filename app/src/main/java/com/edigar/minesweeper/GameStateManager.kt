@@ -29,6 +29,7 @@ class GameStateManager(private val context: Context) {
             putInt(KEY_FLAGS_REMAINING, gameState.flagsRemaining)
             putBoolean(KEY_IS_FIRST_CLICK, gameState.isFirstClick)
             putString(KEY_GAME_STATUS, gameState.gameStatus.name)
+            putInt(KEY_HINTS_REMAINING, gameState.hintsRemaining)
             
             // 将格子数组转换为JSON并保存
             putString(KEY_GRID_STATE, gson.toJson(gameState.gridState))
@@ -70,6 +71,8 @@ class GameStateManager(private val context: Context) {
             val gridJson = prefs.getString(KEY_GRID_STATE, null) ?: return null
             val gridType = object : TypeToken<List<List<MineCellState>>>() {}.type
             val gridState: List<List<MineCellState>> = gson.fromJson(gridJson, gridType)
+              // 添加对提示次数的处理（默认值为3）
+            val hintsRemaining = prefs.getInt(KEY_HINTS_REMAINING, 3)
             
             return GameState(
                 difficulty = difficulty,
@@ -77,6 +80,7 @@ class GameStateManager(private val context: Context) {
                 gameTime = gameTime,
                 flagsRemaining = flagsRemaining,
                 isFirstClick = isFirstClick,
+                hintsRemaining = hintsRemaining,
                 gridState = gridState
             )
         } catch (e: Exception) {
@@ -117,6 +121,7 @@ class GameStateManager(private val context: Context) {
         private const val KEY_GAME_STATUS = "game_status"
         private const val KEY_GRID_STATE = "grid_state"
         private const val KEY_SAVED_TIMESTAMP = "saved_timestamp"
+        private const val KEY_HINTS_REMAINING = "hints_remaining"
         
         // 保存的游戏最长有效期（3天）
         private const val MAX_SAVE_AGE_MS = 3 * 24 * 60 * 60 * 1000L
@@ -132,6 +137,7 @@ data class GameState(
     val gameTime: Int,
     val flagsRemaining: Int,
     val isFirstClick: Boolean,
+    val hintsRemaining: Int, // 添加提示次数
     val gridState: List<List<MineCellState>>
 )
 

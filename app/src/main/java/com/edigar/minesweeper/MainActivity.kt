@@ -120,6 +120,10 @@ fun MineSweeperGame(
     val gameTime = gameViewModel.gameTime
     // 获取是否可以撤销操作
     val canUndo = gameViewModel.canUndo
+    // 获取剩余提示次数
+    val hintsRemaining = gameViewModel.hintsRemaining
+    // 获取是否有高亮的安全格子
+    val isSafeCellHighlighted = gameViewModel.isSafeCellHighlighted
     
     // 创建垂直滚动状态
     val verticalScrollState = rememberScrollState()
@@ -196,6 +200,42 @@ fun MineSweeperGame(
             }
         }
         
+        // 添加提示功能按钮和剩余提示次数信息
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 16.dp)
+        ) {
+            // 显示剩余提示次数
+            Text(
+                text = "提示次数: $hintsRemaining",
+                fontSize = 16.sp,
+                modifier = Modifier.weight(1f)
+            )
+            
+            // 提示按钮
+            Button(
+                onClick = { gameViewModel.useHint() },
+                enabled = gameStatus == GameStatus.PLAYING && hintsRemaining > 0 && gameViewModel.isGameStarted,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF4CAF50) // 绿色按钮
+                )
+            ) {
+                Text("获取提示", fontSize = 16.sp)
+            }
+        }
+        
+        // 如果当前有高亮的安全格子，显示提示信息
+        if (isSafeCellHighlighted) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "提示: 绿色高亮的格子是安全的!",
+                fontSize = 14.sp,
+                color = Color(0xFF4CAF50)
+            )
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
 
         MineSweeperGrid(viewModel = gameViewModel)
@@ -248,8 +288,13 @@ fun MineCellView(cell: MineCell, viewModel: GameViewModel) {
     // 检查游戏是否处于进行中状态，决定单元格是否可交互
     val interactionEnabled = viewModel.gameStatus == GameStatus.PLAYING
     
+    // 检查这个单元格是否是当前被提示高亮的安全格子
+    val isHighlightedSafeCell = viewModel.isSafeCellHighlighted && 
+                               viewModel.highlightedSafeCell == cell
+    
     // 根据单元格状态确定背景颜色
     val baseBackgroundColor = when {
+        isHighlightedSafeCell -> Color(0xFF4CAF50) // 高亮的安全格子显示为绿色
         !cell.isRevealed -> ButtonDefaults.buttonColors().containerColor // 未揭开：默认按钮颜色
         cell.isMine -> Color.Red // 是地雷：红色
         else -> Color.LightGray // 已揭开且不是地雷：灰色

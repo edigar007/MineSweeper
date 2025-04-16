@@ -49,13 +49,36 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
     // 是否是第一次点击（第一次点击时才开始计时）
     private var isFirstClick = true
     
+    // 公开的属性，指示游戏是否已经开始（非第一次点击）
+    val isGameStarted: Boolean
+        get() = !isFirstClick
+    
     // 计时器任务
-    private var timerJob: Job? = null    // 撤销功能相关属性
+    private var timerJob: Job? = null
+    
+    // 撤销功能相关属性
     private var previousGameState: GameStateUndo? = null  // 保存上一步的游戏状态
     var canUndo by mutableStateOf(false)  // 是否可以撤销操作
         private set
+        
     // 记录当前游戏是否已使用过第二次机会
     private var hasUsedSecondChance = false
+    
+    // 提示功能相关状态
+    // 每局游戏的默认提示次数
+    private val DEFAULT_HINTS_COUNT = 3
+    
+    // 剩余提示次数
+    var hintsRemaining by mutableIntStateOf(DEFAULT_HINTS_COUNT)
+        private set
+        
+    // 当前高亮的安全格子
+    var highlightedSafeCell by mutableStateOf<MineCell?>(null)
+        private set
+        
+    // 高亮格子是否可见（用于UI观察）
+    var isSafeCellHighlighted by mutableStateOf(false)
+        private set
     
     init {
         // 尝试加载保存的游戏状态，如果没有则创建新游戏
@@ -81,6 +104,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             gameTime = 0
             isFirstClick = true
             hasUsedSecondChance = false // 重置第二次机会使用状态
+            
+            // 重置提示状态
+            hintsRemaining = DEFAULT_HINTS_COUNT
+            clearHighlightedCell()
             
             // 创建全新的网格（这是关键）
             recreateGrid()
@@ -118,6 +145,10 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         gameTime = 0
         isFirstClick = true
         hasUsedSecondChance = false // 重置第二次机会使用状态
+        
+        // 重置提示状态
+        hintsRemaining = DEFAULT_HINTS_COUNT
+        clearHighlightedCell()
         
         // 完全清除网格，创建新的
         grid.clear()
@@ -463,14 +494,14 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
-            
-            // 创建完整游戏状态
+              // 创建完整游戏状态
             val gameState = GameState(
                 difficulty = currentDifficulty,
                 gameStatus = gameStatus,
                 gameTime = gameTime,
                 flagsRemaining = flagsRemaining,
                 isFirstClick = isFirstClick,
+                hintsRemaining = hintsRemaining, // 保存提示次数
                 gridState = cellStates
             )
             
@@ -498,12 +529,12 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             GRID_ROWS = savedState.difficulty.rows
             GRID_COLS = savedState.difficulty.cols
             MINE_COUNT = savedState.difficulty.mines
-            
-            // 恢复游戏状态
+              // 恢复游戏状态
             gameStatus = savedState.gameStatus
             flagsRemaining = savedState.flagsRemaining
             gameTime = savedState.gameTime
             isFirstClick = savedState.isFirstClick
+            hintsRemaining = savedState.hintsRemaining // 恢复提示次数
             
             // 清空当前网格
             grid.clear()
@@ -615,6 +646,63 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         // 禁用撤销功能，因为已经撤销了一步
         previousGameState = null
         canUndo = false
+    }
+    
+    // 使用提示功能，高亮显示一个安全格子
+    fun useHint() {
+        // 如果游戏已结束或还未开始（第一次点击前）或没有提示次数，则不执行操作
+        if (gameStatus != GameStatus.PLAYING || isFirstClick || hintsRemaining <= 0) {
+            return
+        }
+        
+        // 寻找并高亮显示一个安全的格子
+        val safeCell = findSafeCell()
+        
+        if (safeCell != null) {
+            // 清除之前的高亮
+            highlightedSafeCell = null
+            
+            // 设置新的高亮格子
+            highlightedSafeCell = safeCell
+            isSafeCellHighlighted = true
+            
+            // 减少提示次数
+            hintsRemaining--
+        }
+        
+        // 在10秒后自动取消高亮
+        viewModelScope.launch {
+            delay(10000) // 10秒
+            clearHighlightedCell()
+        }
+    }
+    
+    // 清除高亮的安全格子
+    private fun clearHighlightedCell() {
+        highlightedSafeCell = null
+        isSafeCellHighlighted = false
+    }
+    
+    // 寻找一个安全的格子（未揭开、非地雷、未标记旗子的格子）
+    private fun findSafeCell(): MineCell? {
+        // 收集所有符合条件的安全格子
+        val safeCells = mutableListOf<MineCell>()
+        
+        for (rowList in grid) {
+            for (cell in rowList) {
+                // 安全格子：未揭开、非地雷、未标记旗子或问号
+                if (!cell.isRevealed && !cell.isMine && !cell.isFlagged && !cell.isQuestionMarked) {
+                    safeCells.add(cell)
+                }
+            }
+        }
+        
+        // 如果找到安全格子，随机选择一个（增加游戏乐趣）
+        return if (safeCells.isNotEmpty()) {
+            safeCells[Random.nextInt(safeCells.size)]
+        } else {
+            null // 如果没有安全格子（极少数情况），返回null
+        }
     }
 }
 
