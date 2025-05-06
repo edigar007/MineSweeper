@@ -747,6 +747,57 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         highlightedSafeCell = null
         isSafeCellHighlighted = false
     }
+
+    // 处理拖放标记的方法
+    fun onDragMarkCell(cell: MineCell, markType: MarkType) {
+        // 如果游戏已结束或单元格已揭开，则忽略标记
+        if (gameStatus != GameStatus.PLAYING || cell.isRevealed) {
+            return
+        }
+        
+        // 根据标记类型设置不同的标记
+        when (markType) {
+            MarkType.FLAG -> {
+                // 设置旗子标记，如果有足够的旗子
+                if (!cell.isFlagged && flagsRemaining > 0) {
+                    // 如果之前有问号标记，先清除
+                    if (cell.isQuestionMarked) {
+                        cell.isQuestionMarked = false
+                    }
+                    cell.isFlagged = true
+                    flagsRemaining--
+                }
+            }
+            MarkType.QUESTION -> {
+                // 设置问号标记
+                if (!cell.isQuestionMarked) {
+                    // 如果之前有旗子标记，先清除并恢复旗子数
+                    if (cell.isFlagged) {
+                        cell.isFlagged = false
+                        flagsRemaining++
+                    }
+                    cell.isQuestionMarked = true
+                }
+            }
+            MarkType.CLEAR -> {
+                // 清除所有标记
+                if (cell.isFlagged) {
+                    cell.isFlagged = false
+                    flagsRemaining++
+                }
+                if (cell.isQuestionMarked) {
+                    cell.isQuestionMarked = false
+                }
+            }
+        }
+    }
+}
+
+// 拖放标记类型枚举
+enum class MarkType {
+    FLAG,       // 旗子标记
+    QUESTION,   // 问号标记
+    CLEAR       // 清除标记
 }
 
 // 游戏状态数据类，用于保存游戏状态供撤销功能使用
