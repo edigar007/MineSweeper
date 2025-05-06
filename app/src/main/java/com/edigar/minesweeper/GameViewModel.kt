@@ -648,15 +648,15 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         canUndo = false
     }
     
-    // 使用提示功能，高亮显示一个安全格子
+    // 使用提示功能，高亮显示一个安全格子，优先选择与已揭开数字格子相邻的格子
     fun useHint() {
         // 如果游戏已结束或还未开始（第一次点击前）或没有提示次数，则不执行操作
         if (gameStatus != GameStatus.PLAYING || isFirstClick || hintsRemaining <= 0) {
             return
         }
         
-        // 寻找并高亮显示一个安全的格子
-        val safeCell = findSafeCell()
+        // 寻找并高亮显示一个有策略意义的安全格子
+        val safeCell = findStrategicSafeCell()
         
         if (safeCell != null) {
             // 清除之前的高亮
@@ -677,14 +677,51 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     
-    // 清除高亮的安全格子
-    private fun clearHighlightedCell() {
-        highlightedSafeCell = null
-        isSafeCellHighlighted = false
+    // 寻找一个战略性的安全格子（优先选择与已揭开的数字格子相邻的安全格子）
+    private fun findStrategicSafeCell(): MineCell? {
+        // 优先找到所有已揭开且有数字的格子
+        val revealedNumberCells = mutableListOf<MineCell>()
+        
+        for (rowList in grid) {
+            for (cell in rowList) {
+                // 找出已揭开且有数字的格子
+                if (cell.isRevealed && cell.adjacentMines > 0) {
+                    revealedNumberCells.add(cell)
+                }
+            }
+        }
+        
+        // 收集所有与已揭开数字格子相邻的安全格子
+        val adjacentSafeCells = mutableListOf<MineCell>()
+        
+        // 随机打乱已揭开数字格子的顺序，增加提示的随机性
+        revealedNumberCells.shuffle()
+        
+        // 遍历每个已揭开的数字格子
+        for (numberCell in revealedNumberCells) {
+            // 获取其相邻的格子
+            val neighbors = getNeighborCells(numberCell.row, numberCell.col)
+            
+            // 筛选出安全的未揭开格子
+            for (neighbor in neighbors) {
+                if (!neighbor.isRevealed && !neighbor.isMine && !neighbor.isFlagged && !neighbor.isQuestionMarked) {
+                    // 如果是安全的未揭开格子，添加到候选列表
+                    adjacentSafeCells.add(neighbor)
+                }
+            }
+        }
+        
+        // 如果找到了相邻的安全格子，随机选择一个
+        if (adjacentSafeCells.isNotEmpty()) {
+            return adjacentSafeCells[Random.nextInt(adjacentSafeCells.size)]
+        }
+        
+        // 如果没有找到相邻的安全格子，退回到原来的随机选择方法
+        return findRandomSafeCell()
     }
-    
-    // 寻找一个安全的格子（未揭开、非地雷、未标记旗子的格子）
-    private fun findSafeCell(): MineCell? {
+
+    // 随机选择一个安全格子（备选方案，当没有相邻安全格子时使用）
+    private fun findRandomSafeCell(): MineCell? {
         // 收集所有符合条件的安全格子
         val safeCells = mutableListOf<MineCell>()
         
@@ -697,12 +734,18 @@ class GameViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         
-        // 如果找到安全格子，随机选择一个（增加游戏乐趣）
+        // 如果找到安全格子，随机选择一个
         return if (safeCells.isNotEmpty()) {
             safeCells[Random.nextInt(safeCells.size)]
         } else {
             null // 如果没有安全格子（极少数情况），返回null
         }
+    }
+
+    // 清除高亮的安全格子
+    private fun clearHighlightedCell() {
+        highlightedSafeCell = null
+        isSafeCellHighlighted = false
     }
 }
 
