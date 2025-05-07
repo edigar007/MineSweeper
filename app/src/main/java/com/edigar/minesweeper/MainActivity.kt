@@ -147,6 +147,8 @@ fun MineSweeperGame(
     var currentDragMarkType by remember { mutableStateOf<MarkType?>(null) }
     // 状态：当前拖动的位置（现在使用绝对位置）
     var dragPosition by remember { mutableStateOf(Offset.Zero) }
+    // 状态：初始拖动点（用于确保第一次渲染就在正确位置）
+    var initialDragPosition by remember { mutableStateOf(Offset.Zero) }
     // 状态：是否正在拖动
     var isDragging by remember { mutableStateOf(false) }
     // 状态：网格位置
@@ -274,16 +276,26 @@ fun MineSweeperGame(
             DraggableMarkersRow(
                 onStartDrag = { markType, offset ->
                     currentDragMarkType = markType
-                    // 直接使用传递的绝对屏幕位置
+                    // 将拖动位置和初始位置都设置为触摸位置，确保从手指位置开始
                     dragPosition = offset
+                    initialDragPosition = offset  // 记录初始拖动位置，用于确保UI渲染位置的一致性
+                    // 添加首次渲染的位置日志
+                    println("拖动开始位置设置为: X=${offset.x}, Y=${offset.y}, 标记类型: $markType")
+                    // 首次拖动时，通过状态跟踪
                     isDragging = true
                 },                    
                 onDrag = { absolutePosition ->
-                    // 检查位置是否有显著变化，避免微小变化触发不必要的重绘
-                    val delta = abs(dragPosition.x - absolutePosition.x) + abs(dragPosition.y - absolutePosition.y)
-                    if (delta > 1f) {
-                        // 立即更新拖动位置，确保标记跟随手指移动
+                    // 确保不使用无效位置值
+                    if (absolutePosition.x > -100 && absolutePosition.y > -100) {
+                        // 强制更新拖动位置，确保跟随手指移动
                         dragPosition = absolutePosition
+                        
+                        // 仅偶尔打印位置信息以避免日志过多
+                        if (kotlin.random.Random.nextInt(20) == 0) { // 大约每20次打印一次
+                            println("拖动中 - 位置更新为: X=${absolutePosition.x}, Y=${absolutePosition.y}")
+                        }
+                    } else {
+                        println("忽略无效拖动位置: X=${absolutePosition.x}, Y=${absolutePosition.y}")
                     }
                 },
                 onEndDrag = { lastKnownPosition ->
@@ -321,17 +333,19 @@ fun MineSweeperGame(
                         
                         // 更宽松的边界检查，允许一定的容差
                         val tolerance = 0f
+
+                        // 计算列和行（假设所有格子大小相同）
+                        val cellSize = gridSize.x / gameViewModel.currentDifficulty.cols
     
                         // 计算拖放位置相对于网格的有效坐标
                         // 考虑精确的手指位置，不添加额外偏移以确保定位准确
                         val effectiveReleaseX = releasePosition.x
-                        val effectiveReleaseY = releasePosition.y + scrollOffset
+                        val effectiveReleaseY = releasePosition.y - scrollOffset - gridSize.y
                         
                         println("调整后释放位置 X: ${effectiveReleaseX}, Y: ${effectiveReleaseY}")
                         println("拖动标记类型: $currentDragMarkType")
 
-                        // 计算列和行（假设所有格子大小相同）
-                        val cellSize = gridSize.x / gameViewModel.currentDifficulty.cols
+
 
                         // 精确检查X和Y坐标是否在网格范围内
                         val isTooFarLeft = effectiveReleaseX < gridPosition.x  // 如果X坐标小于网格左边界
@@ -440,17 +454,35 @@ fun MineSweeperGame(
             
             // 如果正在拖动，绘制拖动中的标记
             if (isDragging && currentDragMarkType != null) {
+                // 使用手指位置实时跟踪并渲染标记
                 Box(
                     modifier = Modifier
                         .offset { 
-                            // 使用预先保存的密度计算，避免重复计算
-                            // 将标记显示在手指正下方，精确定位
-                            val markerSize = with(density) { 32.dp.toPx() } // 使用与实际大小完全一致的值
-                            val offsetX = dragPosition.x - (markerSize / 2)
-                            // 向上偏移10像素，使标记出现在手指下方而不被遮挡
-                            val offsetY = dragPosition.y - (markerSize / 2) - 10f
+                            val markerSize = with(density) { 32.dp.toPx() } // 标记大小
+
+                            // 计算列和行（假设所有格子大小相同）
+                            val cellSize = gridSize.x / gameViewModel.currentDifficulty.cols
+
+                            // 确保位置从初始触摸点开始，而不是固定位置
+                            // 第一帧绘制时使用初始拖动位置，确保标记从手指下方开始
+                            val currentX = dragPosition.x
+//                            val currentY = dragPosition.y
+                            val currentY = dragPosition.y - gridSize.y
+                            
+                            // 计算标记应该渲染的位置（居中并向上偏移）
+//                            val offsetX = currentX - (markerSize / 2)
+                            val offsetX = currentX
+                            // 将标记渲染在手指上方，但距离更近一些
+//                            val offsetY = currentY - (markerSize / 2) + 40f
+                            val offsetY = currentY
+
+                            // 仅在调试模式下偶尔输出位置信息
+                            if (kotlin.random.Random.nextInt(30) == 0) {
+                                println("渲染标记 - 位置: X=$offsetX, Y=$offsetY (手指: X=$currentX, Y=$currentY)")
+                            }
+                            
                             IntOffset(
-                                offsetX.toInt(),
+                                offsetX.toInt(), 
                                 offsetY.toInt()
                             )
                         }
@@ -710,45 +742,66 @@ fun DraggableMarker(
                 detectDragGestures(
                     onDragStart = { offset ->
                         isBeingDragged = true
-                        // 计算指针在屏幕上的绝对位置，更加精确地处理初始触摸点
+                        // 计算指针在屏幕上的绝对位置（触摸点位置）
                         val touchPosition = position + offset
-                        // 初始化当前拖动位置 - 不添加任何偏移以获得最准确的位置
+                        // 初始化当前拖动位置，使用准确的触摸点位置
                         currentDragPosition = touchPosition
-                        // 立即通知开始拖动，确保UI响应迅速
+                        // 打印详细日志以检查位置计算
+                        println("DraggableMarker触发拖动 - 卡片位置: X=${position.x}, Y=${position.y}")
+                        println("触摸偏移: X=${offset.x}, Y=${offset.y}")
+                        println("计算的绝对位置: X=${touchPosition.x}, Y=${touchPosition.y}")
+                        // 立即通知开始拖动，确保UI标记从手指位置开始渲染
                         onStartDrag(markType, touchPosition)
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        // 保存当前拖动位置用于onDragEnd
-                        // 使用绝对位置，但确保它在屏幕有效范围内
-                        val absolutePosition = change.position
+                        // 获取当前手指在屏幕上的绝对位置（相对于卡片位置）
+                        val dragOffset = change.position
+                        // 将相对偏移转换为屏幕绝对坐标
+                        val absolutePosition = position + dragOffset
                         
                         // 检查位置坐标是否有效，过滤掉明显不合理的值
                         if (absolutePosition.x > -100 && absolutePosition.y > -100) {
-                            // 使用精确的触摸位置，增加实时性
+                            // 计算绝对触摸位置
                             currentDragPosition = absolutePosition
-                            // 立即传递手指位置，确保UI能快速响应
+                            
+                            // 打印详细调试信息（仅偶尔打印以减少日志量）
+                            if (kotlin.random.Random.nextInt(20) == 0) {
+                                println("拖动中 - 卡片位置: X=${position.x}, Y=${position.y}")
+                                println("  手指偏移: X=${dragOffset.x}, Y=${dragOffset.y}")
+                                println("  绝对位置: X=${absolutePosition.x}, Y=${absolutePosition.y}")
+                            }
+                            
+                            // 立即传递绝对位置，确保标记跟随手指移动
                             onDrag(absolutePosition)
+                        } else {
+                            println("DraggableMarker检测到无效位置: X=${absolutePosition.x}, Y=${absolutePosition.y}")
                         }
                     },
                     onDragEnd = {
                         isBeingDragged = false
                         
-                        // 检查最后的拖动位置是否有效，过滤掉明显不合理的值
+                        // 确保使用最新有效的拖动位置
                         if (currentDragPosition.x < -100 || currentDragPosition.y < -100) {
-                            println("检测到onDragEnd中的无效位置: X=${currentDragPosition.x}, Y=${currentDragPosition.y}")
-                            // 无效位置不传递，使用null以触发回退逻辑
+                            println("拖动结束 - 检测到无效位置: X=${currentDragPosition.x}, Y=${currentDragPosition.y}")
+                            // 无效位置使用null触发回退逻辑
                             onEndDrag(null)
                         } else {
-                            // 精确地将最后的拖动位置传递给onEndDrag
-                            println("有效拖动结束位置: X=${currentDragPosition.x}, Y=${currentDragPosition.y}")
+                            // 传递最后记录的有效拖动位置
+                            println("拖动结束 - 最终位置: X=${currentDragPosition.x}, Y=${currentDragPosition.y}")
                             onEndDrag(currentDragPosition)
                         }
+                        
+                        // 重置当前拖动位置，避免下次拖动时使用旧值
+                        currentDragPosition = Offset.Zero
                     },
                     onDragCancel = {
                         isBeingDragged = false
+                        println("拖动取消")
                         // 拖动取消时不传递位置
                         onEndDrag(null)
+                        // 重置拖动位置
+                        currentDragPosition = Offset.Zero
                     }
                 )
             },
